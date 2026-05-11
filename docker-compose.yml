@@ -1,0 +1,76 @@
+services:
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       aiqadb
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7-jammy
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL:  postgresql+asyncpg://postgres:postgres@db:5432/aiqadb
+      MONGODB_URL:   mongodb://mongo:27017
+      REDIS_URL:     redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/tmp/uploads
+      - faiss:/tmp/faiss_index
+    depends_on:
+      db:    { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pg_data:
+  mongo_data:
+  redis_data:
+  uploads:
+  faiss:
