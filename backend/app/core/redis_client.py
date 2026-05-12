@@ -27,6 +27,7 @@ async def get_redis() -> aioredis.Redis:
             settings.REDIS_URL,
             encoding="utf-8",
             decode_responses=True,
+            ssl_cert_reqs=None,
         )
     return _redis
 
