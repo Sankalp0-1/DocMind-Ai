@@ -1,27 +1,25 @@
 """
-VectorService — FAISS-backed semantic search using sentence-transformers.
+VectorService — FAISS-backed semantic search using OpenAI embeddings.
 """
-
-import os
 import pickle
 from pathlib import Path
 from typing import Optional
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
+import openai
 
 from app.core.config import settings
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
-
-_model = SentenceTransformer("all-MiniLM-L6-v2")
+client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 class VectorService:
     INDEX_FILE = Path(settings.FAISS_INDEX_PATH) / "index.faiss"
     META_FILE  = Path(settings.FAISS_INDEX_PATH) / "meta.pkl"
+    DIM = 1536  # text-embedding-3-small dimension
 
     def __init__(self):
         Path(settings.FAISS_INDEX_PATH).mkdir(parents=True, exist_ok=True)
@@ -36,7 +34,7 @@ class VectorService:
                 self._meta = pickle.load(f)
             logger.info(f"FAISS index loaded: {self._index.ntotal} vectors")
         else:
-            self._index = faiss.IndexFlatIP(384)
+            self._index = faiss.IndexFlatIP(self.DIM)
             self._meta = []
 
     def _save(self):
@@ -45,8 +43,17 @@ class VectorService:
             pickle.dump(self._meta, f)
 
     async def _embed(self, texts: list[str]) -> np.ndarray:
-        arr = _model.encode(texts, normalize_embeddings=True).astype(np.float32)
-        return arr
+        response = await client.embeddings.create(
+            model=settings.OPENAI_EMBED_MODEL,
+            input=texts,
+        )
+        vectors = np.array(
+            [item.embedding for item in response.data], dtype=np.float32
+        )
+        # Normalize for cosine similarity
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        vectors = vectors / np.maximum(norms, 1e-9)
+        return vectors
 
     async def index_document(self, doc_id: str, chunks: list[str]) -> None:
         if not chunks:
@@ -62,12 +69,12 @@ class VectorService:
     async def remove_document(self, doc_id: str) -> None:
         remaining = [(i, m) for i, m in enumerate(self._meta) if m["doc_id"] != doc_id]
         if not remaining:
-            self._index = faiss.IndexFlatIP(384)
+            self._index = faiss.IndexFlatIP(self.DIM)
             self._meta = []
             self._save()
             return
         indices, metas = zip(*remaining)
-        new_index = faiss.IndexFlatIP(384)
+        new_index = faiss.IndexFlatIP(self.DIM)
         texts = [m["text"] for m in metas]
         vectors = await self._embed(texts)
         new_index.add(vectors)

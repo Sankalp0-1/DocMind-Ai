@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW_SECONDS: int = 60
 
     FAISS_INDEX_PATH: str = "/tmp/faiss_index"
-    VECTOR_DIM: int = 768
+    VECTOR_DIM: int = 1536
 
 
 settings = Settings()
