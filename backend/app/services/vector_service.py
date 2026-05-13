@@ -1,105 +1,43 @@
 """
-VectorService — FAISS-backed semantic search using OpenAI embeddings.
+VectorService — Simple text search (no embeddings needed).
 """
-import pickle
-from pathlib import Path
-from typing import Optional
-
-import faiss
-import numpy as np
-import openai
-
-from app.core.config import settings
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
-client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 class VectorService:
-    INDEX_FILE = Path(settings.FAISS_INDEX_PATH) / "index.faiss"
-    META_FILE  = Path(settings.FAISS_INDEX_PATH) / "meta.pkl"
-    DIM = 1536  # text-embedding-3-small dimension
-
-    def __init__(self):
-        Path(settings.FAISS_INDEX_PATH).mkdir(parents=True, exist_ok=True)
-        self._index: Optional[faiss.IndexFlatIP] = None
-        self._meta: list[dict] = []
-        self._load()
-
-    def _load(self):
-        if self.INDEX_FILE.exists() and self.META_FILE.exists():
-            self._index = faiss.read_index(str(self.INDEX_FILE))
-            with open(self.META_FILE, "rb") as f:
-                self._meta = pickle.load(f)
-            logger.info(f"FAISS index loaded: {self._index.ntotal} vectors")
-        else:
-            self._index = faiss.IndexFlatIP(self.DIM)
-            self._meta = []
-
-    def _save(self):
-        faiss.write_index(self._index, str(self.INDEX_FILE))
-        with open(self.META_FILE, "wb") as f:
-            pickle.dump(self._meta, f)
-
-    async def _embed(self, texts: list[str]) -> np.ndarray:
-        response = await client.embeddings.create(
-            model=settings.OPENAI_EMBED_MODEL,
-            input=texts,
-        )
-        vectors = np.array(
-            [item.embedding for item in response.data], dtype=np.float32
-        )
-        # Normalize for cosine similarity
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        vectors = vectors / np.maximum(norms, 1e-9)
-        return vectors
 
     async def index_document(self, doc_id: str, chunks: list[str]) -> None:
-        if not chunks:
-            return
-        logger.info(f"Indexing {len(chunks)} chunks for doc {doc_id}...")
-        vectors = await self._embed(chunks)
-        self._index.add(vectors)
-        for i, text in enumerate(chunks):
-            self._meta.append({"doc_id": doc_id, "chunk_idx": i, "text": text})
-        self._save()
-        logger.info(f"FAISS now has {self._index.ntotal} total vectors")
+        # No indexing needed — text stored in MongoDB directly
+        logger.info(f"Skipping vector indexing for doc {doc_id} (using MongoDB text search)")
 
     async def remove_document(self, doc_id: str) -> None:
-        remaining = [(i, m) for i, m in enumerate(self._meta) if m["doc_id"] != doc_id]
-        if not remaining:
-            self._index = faiss.IndexFlatIP(self.DIM)
-            self._meta = []
-            self._save()
-            return
-        indices, metas = zip(*remaining)
-        new_index = faiss.IndexFlatIP(self.DIM)
-        texts = [m["text"] for m in metas]
-        vectors = await self._embed(texts)
-        new_index.add(vectors)
-        self._index = new_index
-        self._meta = list(metas)
-        self._save()
+        pass
 
     async def search(self, query: str, doc_id: str, top_k: int = 5) -> list[dict]:
-        if self._index.ntotal == 0:
+        # Simple keyword search in MongoDB
+        from app.core.database import get_mongo_db
+        db = get_mongo_db()
+        doc = await db["documents"].find_one({"document_id": int(doc_id)})
+        if not doc:
             return []
-        q_vec = await self._embed([query])
-        k = min(top_k * 10, self._index.ntotal)
-        scores, indices = self._index.search(q_vec, k)
-        results = []
-        for score, idx in zip(scores[0], indices[0]):
-            if idx < 0 or idx >= len(self._meta):
-                continue
-            meta = self._meta[idx]
-            if meta["doc_id"] != doc_id:
-                continue
-            results.append({
-                "text": meta["text"],
-                "chunk_idx": meta["chunk_idx"],
-                "score": float(score),
-            })
-            if len(results) >= top_k:
-                break
-        return results
+        
+        query_words = query.lower().split()
+        chunks = doc.get("chunks", [])
+        
+        scored = []
+        for i, chunk in enumerate(chunks):
+            text_lower = chunk["text"].lower()
+            score = sum(1 for word in query_words if word in text_lower)
+            if score > 0:
+                scored.append({
+                    "text": chunk["text"],
+                    "chunk_idx": i,
+                    "score": float(score),
+                    **{k: v for k, v in chunk.items() if k != "text"}
+                })
+        
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:top_k]
+    
