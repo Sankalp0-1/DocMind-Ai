@@ -81,7 +81,12 @@ class ChatService:
                 json={"model": settings.GROQ_CHAT_MODEL, "messages": messages, "stream": False},
                 timeout=60,
             )
-            answer_text = resp.json()["choices"][0]["message"]["content"]
+            resp_json = resp.json()
+            logger.error(f"Groq response: {resp_json}")
+            if "choices" not in resp_json:
+                answer_text = f"API Error: {resp_json.get('error', {}).get('message', 'Unknown error')}"
+            else:
+                answer_text = resp_json["choices"][0]["message"]["content"]
 
         sources = self._build_sources(hits, document)
         timestamp_hint = await self._find_timestamp(document, hits)
