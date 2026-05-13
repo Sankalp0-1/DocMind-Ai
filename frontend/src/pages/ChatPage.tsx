@@ -154,7 +154,7 @@ export default function ChatPage() {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 180000)
 
-    const response = await fetch('/api/chat/', {
+    const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/chat/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
