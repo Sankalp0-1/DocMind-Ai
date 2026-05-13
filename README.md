@@ -1,6 +1,8 @@
 # DocMind AI — Document & Multimedia Q&A
 
-> Upload PDFs, audio, and video files. Chat with your content using GPT-4o. Get summaries, jump to timestamps, and stream answers in real time.
+> Upload PDFs, audio, and video files. Chat with your content using Groq LLM. Get summaries, jump to timestamps, and stream answers in real time.
+
+🚀 **Live Demo:** [https://doc-mind-ai-rho.vercel.app](https://doc-mind-ai-rho.vercel.app)
 
 ---
 
@@ -8,7 +10,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Browser  →  React + Zustand + TailwindCSS                       │
+│  Browser  →  React + Zustand + TailwindCSS (Vercel)             │
 ├─────────────────────────────────────────────────────────────────┤
 │  Nginx (port 80)  — serves SPA + proxies /api → FastAPI         │
 ├───────────────────────────┬─────────────────────────────────────┤
@@ -35,7 +37,7 @@
 | File upload | PDF, MP3, WAV, OGG, MP4, WebM, MOV (up to 500 MB) |
 | PDF processing | PyMuPDF — text + page numbers |
 | Audio/Video | OpenAI Whisper — transcript + timestamps |
-| RAG chat | FAISS semantic search → GPT-4o grounded answers |
+| RAG chat | FAISS semantic search → Groq LLM grounded answers |
 | Streaming | SSE real-time token streaming |
 | Summary | Auto-generated summary + key topics |
 | Timestamps | Jump to relevant audio/video segment |
@@ -52,16 +54,16 @@
 
 ### Prerequisites
 - Docker & Docker Compose
-- An [OpenAI API key](https://platform.openai.com/api-keys)
+- A [Groq API key](https://console.groq.com/keys)
 
 ### 1. Clone & configure
 
 ```bash
-git clone https://github.com/your-org/ai-qa-app.git
-cd ai-qa-app
+git clone https://github.com/Sankalp0-1/DocMind-Ai.git
+cd DocMind-Ai
 
 cp backend/.env.example backend/.env
-# Edit backend/.env and set OPENAI_API_KEY=sk-...
+# Edit backend/.env and set GROQ_API_KEY=gsk_...
 ```
 
 ### 2. Start everything
@@ -183,13 +185,61 @@ See `backend/.env.example` for the full list. Key variables:
 
 | Variable | Required | Default |
 |---|---|---|
-| `OPENAI_API_KEY` | ✅ | — |
+| `GROQ_API_KEY` | ✅ | — |
+| `GROQ_CHAT_MODEL` | | `llama3-8b-8192` |
 | `SECRET_KEY` | ✅ | — |
 | `DATABASE_URL` | ✅ | set by compose |
 | `MONGODB_URL` | ✅ | set by compose |
 | `REDIS_URL` | ✅ | set by compose |
-| `OPENAI_CHAT_MODEL` | | `gpt-4o` |
+| `DEBUG` | | `false` |
+| `UPLOAD_DIR` | | `uploads/` |
 | `MAX_FILE_SIZE_MB` | | `500` |
+| `FAISS_INDEX_PATH` | | `faiss_index/` |
+| `VECTOR_DIM` | | `1536` |
+| `JWT_ALGORITHM` | | `HS256` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | | `1440` |
+| `RATE_LIMIT_REQUESTS` | | `100` |
+| `RATE_LIMIT_WINDOW_SECONDS` | | `60` |
+| `ALLOWED_ORIGINS` | | `*` |
+
+---
+
+## Deployment
+
+This project is deployed using:
+
+- **Backend** — [Railway](https://railway.app) (FastAPI + PostgreSQL + MongoDB)
+- **Frontend** — [Vercel](https://vercel.com) (React SPA)
+
+### Deploy to Railway (Backend)
+
+1. Create a new Railway project and add your GitHub repo
+2. Add **PostgreSQL** and **MongoDB** plugins — Railway auto-injects `DATABASE_URL` and `MONGODB_URL`
+3. Add a **Redis** plugin or use an external Redis URL
+4. Set the following environment variables in Railway → Variables:
+
+```env
+GROQ_API_KEY=gsk_...
+GROQ_CHAT_MODEL=llama3-8b-8192
+SECRET_KEY=your-secret-key
+DEBUG=false
+UPLOAD_DIR=uploads/
+MAX_FILE_SIZE_MB=500
+FAISS_INDEX_PATH=faiss_index/
+VECTOR_DIM=1536
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=1440
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW_SECONDS=60
+ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+```
+
+### Deploy to Vercel (Frontend)
+
+1. Import the repo on [Vercel](https://vercel.com)
+2. Set root directory to `frontend`
+3. Add environment variable: `VITE_API_URL=https://your-railway-backend.up.railway.app`
+4. Deploy
 
 ---
 
@@ -209,7 +259,7 @@ To enable deploy, uncomment the `deploy` job and set:
 ## Project Structure
 
 ```
-ai-qa-app/
+DocMind-Ai/
 ├── backend/
 │   ├── app/
 │   │   ├── api/          # Route handlers (auth, upload, chat, summary)
